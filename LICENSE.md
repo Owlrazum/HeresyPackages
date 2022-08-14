@@ -1,4 +1,4 @@
-MIT License
+Herecy License
 
 Copyright (c) 2022 Orazum
 
