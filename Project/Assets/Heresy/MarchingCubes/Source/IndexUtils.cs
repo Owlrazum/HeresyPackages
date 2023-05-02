@@ -74,12 +74,4 @@ namespace Orazum.MarchingCubes
             return IndexUtils.XyzToIndex(pos, dims.x - reduceCount, dims.z - reduceCount);
         }
     }
-
-    namespace Test
-    {
-        public static class IndexUtilsTest
-        { 
-
-        }
-    }
 }

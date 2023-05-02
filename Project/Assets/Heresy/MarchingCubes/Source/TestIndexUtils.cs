@@ -129,7 +129,6 @@ public class TestIndexUtils : MonoBehaviour
     {
         int index = IndexUtils.XyzToIndex(indexToSelect, dims, dims);
         int reducedIndex = IndexUtils.ReduceIndex3D(index, dims, reduceAmount);
-        Debug.Log(index + " " + reducedIndex);
         list[reducedIndex].rend.sharedMaterial = selected;
     }
 }

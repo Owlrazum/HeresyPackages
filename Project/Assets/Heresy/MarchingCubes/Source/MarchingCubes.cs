@@ -75,6 +75,7 @@ namespace Orazum.MarchingCubes
             {
                 return;
             }
+            int cubeIndex = IndexUtils.XyzToIndex(cornerPos, gridDims.x - 1, gridDims.z - 1);
 
             NativeArray<int> cornersIndices = new(8, Allocator.Temp);
             for (int i = 0; i < 8; i++)
@@ -96,6 +97,7 @@ namespace Orazum.MarchingCubes
             int edgeIndex = LookupTables.EdgeTable[lookUpCubeIndex];
             if (edgeIndex == 0)
             {
+                vertexCountOut[cubeIndex] = 0;
                 return;
             }
 
@@ -116,7 +118,6 @@ namespace Orazum.MarchingCubes
                 marchedPositions[i] = p1 + (p2 - p1) * (isoLevel - v1) / (v2 - v1);
             }
 
-            int cubeIndex = IndexUtils.XyzToIndex(cornerPos, gridDims.x - 1, gridDims.z - 1);
             int vertexOffset = cubeIndex * 15;
             
             int rowIndex = 15 * lookUpCubeIndex;
@@ -151,12 +152,11 @@ namespace Orazum.MarchingCubes
     }
 
     [BurstCompile]
-    struct FillVertexBufferSequential : IJob
+    struct FillVertexBuffer : IJob
     {
         public NativeArray<VertexData> vertices;
-        [ReadOnly]
-        public NativeArray<int> verticesCountRangeIn;
 
+        public NativeArray<int> verticesCountRangeIn;
         public NativeArray<int> verticesCountOut;
 
         const int rangeCount = 15;
@@ -184,63 +184,6 @@ namespace Orazum.MarchingCubes
                 srcOffset += rangeCount;
             }
             verticesCountOut[0] = verticesCount;
-        }
-    }
-
-    [BurstCompile]
-    struct FillVertexBufferUnique : IJob
-    {
-        public NativeArray<int> verticesCountRange;
-        
-        public NativeArray<VertexData> vertices;
-        public NativeArray<short> indices;
-        
-        public NativeArray<int> verticesCountOut;
-        public NativeArray<int> indicesCountOut;
-
-        const int rangeCount = 15;
-
-        public void Execute()
-        {
-            NativeHashMap<float3, short> hashMap = new(vertices.Length, Allocator.Temp);
-            int verticesCount = 0;
-            int indexCount = 0;
-            
-            int srcOffset = 0;
-            int destOffset = 0;
-            for (int rangeIndex = 0; rangeIndex < verticesCountRange.Length; rangeIndex++)
-            {
-                if (verticesCountRange[rangeIndex] == 0)
-                {
-                    srcOffset += rangeCount;
-                    continue;
-                }
-
-                int verticesCountRangeLocal = verticesCountRange[rangeIndex];
-                for (int i = 0; i < verticesCountRangeLocal; i++)
-                {
-                    VertexData data = vertices[srcOffset + i];
-                    short index;
-                    if (!hashMap.TryGetValue(data.position, out index))
-                    {
-                        index = (short)(destOffset + i);
-                        vertices[index] = data;
-                        hashMap.Add(data.position, index);
-                        verticesCount++;
-                    }
-                    indices[indexCount++] = index;
-                }
-                destOffset += verticesCountRangeLocal;
-                srcOffset += rangeCount;
-            }
-
-            verticesCountOut[0] = verticesCount;
-            indicesCountOut[0] = indexCount;
-
-            for (int i = 0; i < verticesCountRange.Length; i++)
-            {
-                verticesCountRange[i] = 0;
-            }
         }
     }
 

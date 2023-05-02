@@ -16,12 +16,6 @@ enum SizeMethod
     ByCell
 }
 
-enum VertexMethod
-{ 
-    Sequential,
-    Unique
-}
-
 /// <summary>
 /// Can be served as an example. Generates metaball-like behaviour
 /// </summary>
@@ -33,9 +27,6 @@ public class TestMarchingCubes : MonoBehaviour
 
     [SerializeField]
     Transform[] transformsToUse;
-
-    [SerializeField]
-    VertexMethod vertexMethod = VertexMethod.Unique;
 
     [SerializeField]
     int dims = 20;
@@ -60,8 +51,6 @@ public class TestMarchingCubes : MonoBehaviour
     NativeArray<float3> transformPositions;
     NativeArray<Corner> scalarField;
 
-    NativeArray<int> indicesCount;
-
     Mesh mesh;
 
     int cellsCount;
@@ -69,8 +58,7 @@ public class TestMarchingCubes : MonoBehaviour
 
     InitializeScalarField scalarFieldInit;
     GenerateMarchineCubes generate;
-    FillVertexBufferSequential fillVertexBufferSequential;
-    FillVertexBufferUnique fillVertexBufferUnique;
+    FillVertexBuffer fillVertexBuffer;
 
     JobHandle scalarFieldHandle;
     JobHandle generateHandle;
@@ -121,34 +109,16 @@ public class TestMarchingCubes : MonoBehaviour
             , gridDims = dims
         };
 
-        if (vertexMethod == VertexMethod.Sequential)
+        for (int i = 0; i < vertices.Length; i++)
         {
-            for (int i = 0; i < vertices.Length; i++)
-            {
-                indices[i] = (short)i;
-            }
-
-            fillVertexBufferSequential = new()
-            {
-                vertices = vertices
-                , verticesCountRangeIn = verticesCountRange
-                , verticesCountOut = verticesCount
-            };
+            indices[i] = (short)i;
         }
-        else if (vertexMethod == VertexMethod.Unique)
+        fillVertexBuffer = new()
         {
-            indicesCount = new(1, Allocator.Persistent);
-
-            fillVertexBufferUnique = new()
-            {
-                vertices = vertices
-                , verticesCountRange = verticesCountRange
-                , verticesCountOut = verticesCount
-                , indices = indices
-                , indicesCountOut = indicesCount
-            };
-        }
-
+            vertices = vertices
+            , verticesCountRangeIn = verticesCountRange
+            , verticesCountOut = verticesCount
+        };
     }
 
     void Update()
@@ -164,23 +134,7 @@ public class TestMarchingCubes : MonoBehaviour
         generate.isoLevel = isoLevel;
         generateHandle = generate.ScheduleParallel(cellsCount, cubesCount, scalarFieldHandle);
 
-        if (vertexMethod == VertexMethod.Sequential)
-        {
-            if (indicesCount.IsCreated)
-            {
-                throw new System.Exception("Do not change vertex method while updating");
-            }
-            verticesHandle = fillVertexBufferSequential.Schedule(generateHandle);
-        }
-        else if (vertexMethod == VertexMethod.Unique)
-        {
-            if (!indicesCount.IsCreated)
-            {
-                throw new System.Exception("Do not change vertex method while updating");
-            }
-            verticesHandle = fillVertexBufferUnique.Schedule(generateHandle);
-        }
-
+        verticesHandle = fillVertexBuffer.Schedule(generateHandle);
         JobHandle.ScheduleBatchedJobs();
     }
 
@@ -195,9 +149,8 @@ public class TestMarchingCubes : MonoBehaviour
 
     public void GenerateMeshImmediate()
     {
-        int indexCount = vertexMethod == VertexMethod.Sequential ? verticesCount[0] : indicesCount[0];
+        int indexCount = verticesCount[0];
 
-        Debug.Log(indexCount);
         mesh.SetVertexBufferParams(verticesCount[0], VertexData.VertexBufferMemoryLayout);
         mesh.SetIndexBufferParams(indexCount, IndexFormat.UInt16);
 
@@ -209,11 +162,10 @@ public class TestMarchingCubes : MonoBehaviour
             indexStart: 0,
             indexCount: indexCount
         );
-        return;
         mesh.SetSubMesh(0, subMesh);
 
-        // mesh.RecalculateNormals();
-        // mesh.RecalculateBounds();
+        // mesh.RecalculateNormals(); is not needed because the vertices are not shared/
+        mesh.RecalculateBounds();
     }
 
     private bool areDisposed;
@@ -225,7 +177,6 @@ public class TestMarchingCubes : MonoBehaviour
             vertices.Dispose();
             verticesCount.Dispose();
             indices.Dispose();
-            indicesCount.Dispose();
             verticesCountRange.Dispose();
             transformPositions.Dispose();
             areDisposed = true;
