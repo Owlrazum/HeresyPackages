@@ -7,12 +7,6 @@ Their legacy will not be forgotten.
 
 Come, say hello and ask them what they have to offer (￢‿￢ )
 
-Here they are:
-
- - MarchingCubes
- - Grid
- - MeshCut
-
 ## MarchingCubes
 
 The youngest of these people, has something to show you:
