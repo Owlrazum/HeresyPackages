@@ -152,19 +152,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: abe048682978a41d39daac9aa2ed8fa3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  testHex: 0
+  testHex: 1
   testQuad: 0
-  testCircle: 1
+  testCircle: 0
   hexDims:
-    x: 7
-    y: 21
+    x: 21
+    y: 7
   quadDims:
     x: 10
     y: 10
   circleDims:
     x: 5
     y: 3
-  prefab: {fileID: 8448271042288962015, guid: 15eeda60ca9ac4c2c8720770674260c2, type: 3}
+  prefab: {fileID: 8448271042288962015, guid: 9efdbf67cd0b84ad68d332823e799715, type: 3}
 --- !u!4 &212686050
 Transform:
   m_ObjectHideFlags: 0
