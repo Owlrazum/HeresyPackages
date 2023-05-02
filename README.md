@@ -7,7 +7,7 @@ The legacy will not be forgotten.
 
 Here they are:
 
- - GridAndFov
  - MarchingCubes
+ - Grid
  - MeshCut
 
