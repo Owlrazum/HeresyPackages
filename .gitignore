@@ -49,4 +49,4 @@ Assets/StreamingAssets/crashlytics-bu
 .DS_Store
 
 # Heresy changing assets without need to save them
-# Project/Assets/Heresy/MarchingCubes/Resources/Mesh.asset
+Project/Assets/Heresy/MarchingCubes/Resources/Mesh.asset
