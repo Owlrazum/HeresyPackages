@@ -1,7 +1,249 @@
+using System.Runtime.InteropServices;
+
 using Unity.Mathematics;
+using Unity.Collections;
+using Unity.Burst;
+using Unity.Jobs;
 
 namespace Orazum.MarchingCubes
 {
+    /// <summary>
+    /// Change if necessary
+    /// </summary> 
+    public struct Corner
+    {
+        public float3 pos;
+        public float value;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct VertexData
+    {
+        public float3 position;
+        public float3 normal;
+
+        public VertexData(float3 position, float3 normal)
+        {
+            this.position = position;
+            this.normal = normal;
+        }
+        public static readonly UnityEngine.Rendering.VertexAttributeDescriptor[] VertexBufferMemoryLayout =
+        {
+            new UnityEngine.Rendering.VertexAttributeDescriptor(
+                UnityEngine.Rendering.VertexAttribute.Position),
+            new UnityEngine.Rendering.VertexAttributeDescriptor(
+                UnityEngine.Rendering.VertexAttribute.Normal)
+        };
+    }
+
+    /// <summary>
+    /// Requires initialized scalar field. 
+    /// The data can be collected to get rid of gaps.
+    /// See Tester for details.
+    /// </summary>
+    [BurstCompile]
+    public struct GenerateMarchineCubes : IJobFor
+    {
+        [ReadOnly]
+        public NativeArray<Corner> scalarFieldIn; // 3d grid
+        ///<summary>vertex and index count is gridSize * 15</summary>
+        [WriteOnly]
+        [NativeDisableParallelForRestriction]
+        public NativeArray<VertexData> verticesOut;
+        ///<summary>
+        ///Buffer for storing actual generated vertex and index counts. 
+        ///The capacity should be equal to the number of cubes.
+        ///</summary>
+        [WriteOnly]
+        [NativeDisableParallelForRestriction]
+        public NativeArray<int> vertexCountOut;
+
+        /// <summary>
+        /// isoLevel - The density level where a surface will be created.
+        /// Densities below this will be inside the surface (solid),
+        /// and densities above this will be outside the surface (air)
+        /// </summary>
+        public float isoLevel;
+        public int3 gridDims;
+
+        public void Execute(int cornerIndex)
+        {
+            int3 cornerPos = IndexUtils.IndexToXyz(cornerIndex, gridDims.x, gridDims.z);
+            if (cornerPos.x == gridDims.x - 1
+                || cornerPos.y == gridDims.y - 1
+                || cornerPos.z == gridDims.z - 1)
+            {
+                return;
+            }
+
+            NativeArray<int> cornersIndices = new(8, Allocator.Temp);
+            for (int i = 0; i < 8; i++)
+            {
+                int3 cubeCorner = cornerPos + LookupTables.CubeCorners[i];
+                cornersIndices[i] = IndexUtils.XyzToIndex(cubeCorner, gridDims.x, gridDims.z);
+            }
+
+            byte lookUpCubeIndex = 0;
+            if (scalarFieldIn[cornersIndices[0]].value < isoLevel) lookUpCubeIndex |= 1;
+            if (scalarFieldIn[cornersIndices[1]].value < isoLevel) lookUpCubeIndex |= 2;
+            if (scalarFieldIn[cornersIndices[2]].value < isoLevel) lookUpCubeIndex |= 4;
+            if (scalarFieldIn[cornersIndices[3]].value < isoLevel) lookUpCubeIndex |= 8;
+            if (scalarFieldIn[cornersIndices[4]].value < isoLevel) lookUpCubeIndex |= 16;
+            if (scalarFieldIn[cornersIndices[5]].value < isoLevel) lookUpCubeIndex |= 32;
+            if (scalarFieldIn[cornersIndices[6]].value < isoLevel) lookUpCubeIndex |= 64;
+            if (scalarFieldIn[cornersIndices[7]].value < isoLevel) lookUpCubeIndex |= 128;
+
+            int edgeIndex = LookupTables.EdgeTable[lookUpCubeIndex];
+            if (edgeIndex == 0)
+            {
+                return;
+            }
+
+            NativeArray<float3> marchedPositions = new(12, Allocator.Temp);
+            for (int i = 0; i < 12; i++)
+            {
+                if ((edgeIndex & (1 << i)) == 0) { continue; }
+
+                int edgeStartIndex = LookupTables.EdgeIndexTable[2 * i + 0];
+                int edgeEndIndex = LookupTables.EdgeIndexTable[2 * i + 1];
+
+                float3 p1 = scalarFieldIn[cornersIndices[edgeStartIndex]].pos;
+                float3 p2 = scalarFieldIn[cornersIndices[edgeEndIndex]].pos;
+
+                float v1 = scalarFieldIn[cornersIndices[edgeStartIndex]].value;
+                float v2 = scalarFieldIn[cornersIndices[edgeEndIndex]].value;
+
+                marchedPositions[i] = p1 + (p2 - p1) * (isoLevel - v1) / (v2 - v1);
+            }
+
+            int cubeIndex = IndexUtils.XyzToIndex(cornerPos, gridDims.x - 1, gridDims.z - 1);
+            int vertexOffset = cubeIndex * 15;
+            
+            int rowIndex = 15 * lookUpCubeIndex;
+            int vertexCount = 0;
+            for (int i = 0; i < 15; i += 3)
+            {
+                int triangleIndex = rowIndex + i;
+                bool noMoreTriangles = LookupTables.TriangleTable[triangleIndex] == -1;
+                if (noMoreTriangles)
+                {
+                    break;
+                }
+
+                float3 v0 = marchedPositions[LookupTables.TriangleTable[triangleIndex]];
+                float3 v1 = marchedPositions[LookupTables.TriangleTable[triangleIndex + 1]];
+                float3 v2 = marchedPositions[LookupTables.TriangleTable[triangleIndex + 2]];
+
+                if (!v0.Equals(v1) && !v1.Equals(v2) && !v0.Equals(v2))
+                { 
+                    float3 normal = math.normalize(math.cross(v1 - v0, v2 - v0));
+
+                    verticesOut[vertexOffset + i] = new VertexData(v0, normal);
+                    verticesOut[vertexOffset + i + 1] = new VertexData(v2, normal);
+                    verticesOut[vertexOffset + i + 2] = new VertexData(v1, normal);
+
+                    vertexCount += 3;
+                }
+            }
+
+            vertexCountOut[cubeIndex] = vertexCount;
+        }
+    }
+
+    [BurstCompile]
+    struct FillVertexBufferSequential : IJob
+    {
+        public NativeArray<VertexData> vertices;
+        [ReadOnly]
+        public NativeArray<int> verticesCountRangeIn;
+
+        public NativeArray<int> verticesCountOut;
+
+        const int rangeCount = 15;
+
+        public void Execute()
+        {
+            int verticesCount = 0;
+            int srcOffset = 0;
+            int destOffset = 0;
+            for (int rangeIndex = 0; rangeIndex < verticesCountRangeIn.Length; rangeIndex++)
+            {
+                if (verticesCountRangeIn[rangeIndex] == 0)
+                {
+                    srcOffset += rangeCount;
+                    continue;
+                }
+
+                int vertexCount = verticesCountRangeIn[rangeIndex];
+                verticesCount += vertexCount;
+                for (int i = 0; i < vertexCount; i++)
+                {
+                    vertices[destOffset + i] = vertices[srcOffset + i];
+                }
+                destOffset += vertexCount;
+                srcOffset += rangeCount;
+            }
+            verticesCountOut[0] = verticesCount;
+        }
+    }
+
+    [BurstCompile]
+    struct FillVertexBufferUnique : IJob
+    {
+        public NativeArray<int> verticesCountRange;
+        
+        public NativeArray<VertexData> vertices;
+        public NativeArray<short> indices;
+        
+        public NativeArray<int> verticesCountOut;
+        public NativeArray<int> indicesCountOut;
+
+        const int rangeCount = 15;
+
+        public void Execute()
+        {
+            NativeHashMap<float3, short> hashMap = new(vertices.Length, Allocator.Temp);
+            int verticesCount = 0;
+            int indexCount = 0;
+            
+            int srcOffset = 0;
+            int destOffset = 0;
+            for (int rangeIndex = 0; rangeIndex < verticesCountRange.Length; rangeIndex++)
+            {
+                if (verticesCountRange[rangeIndex] == 0)
+                {
+                    srcOffset += rangeCount;
+                    continue;
+                }
+
+                int verticesCountRangeLocal = verticesCountRange[rangeIndex];
+                for (int i = 0; i < verticesCountRangeLocal; i++)
+                {
+                    VertexData data = vertices[srcOffset + i];
+                    short index;
+                    if (!hashMap.TryGetValue(data.position, out index))
+                    {
+                        index = (short)(destOffset + i);
+                        vertices[index] = data;
+                        hashMap.Add(data.position, index);
+                        verticesCount++;
+                    }
+                    indices[indexCount++] = index;
+                }
+                destOffset += verticesCountRangeLocal;
+                srcOffset += rangeCount;
+            }
+
+            verticesCountOut[0] = verticesCount;
+            indicesCountOut[0] = indexCount;
+
+            for (int i = 0; i < verticesCountRange.Length; i++)
+            {
+                verticesCountRange[i] = 0;
+            }
+        }
+    }
+
     /// <summary>
     /// A collection of lookup tables needed for the marching cubes algorithm
     /// </summary>
