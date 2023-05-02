@@ -89,7 +89,7 @@ public class TestMarchingCubes : MonoBehaviour
             gridSize = cellSize * dims;
         }
 
-        mesh = GetComponent<MeshFilter>().sharedMesh;
+        mesh = GetComponent<MeshFilter>().mesh;
         mesh.MarkDynamic();
 
         scalarFieldInit = new()

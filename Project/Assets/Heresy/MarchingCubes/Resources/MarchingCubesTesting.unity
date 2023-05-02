@@ -209,7 +209,7 @@ MonoBehaviour:
   - {fileID: 1792190062}
   - {fileID: 1694405228}
   - {fileID: 1529414831}
-  dims: 2
+  dims: 30
   radius: 3
   sizeMethod: 0
   cellSize: 0.4
